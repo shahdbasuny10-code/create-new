@@ -28,13 +28,15 @@
   .tabs button { flex: 1; background: #e5e7eb; color: #111; }
   .tabs button.active { background: #1e3a8a; color: white; }
   .hidden { display: none; }
-  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: white; font-weight: bold; z-index: 1000; }
+  .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; border-radius: 8px; color: white; font-weight: bold; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
   .toast.ok { background: #16a34a; }
   .toast.err { background: #dc2626; }
   .mono { font-family: monospace; }
   .muted { color: #6b7280; font-size: 12px; }
   .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 20px; }
   .modal { background: white; border-radius: 10px; padding: 24px; max-width: 600px; width: 100%; max-height: 90vh; overflow: auto; }
+  .quick-btn { background: #f3f4f6; color: #111; font-size: 12px; padding: 6px 10px; margin-top: 6px; width: auto; }
+  .error-box { background: #fee2e2; color: #991b1b; padding: 10px; border-radius: 6px; margin-top: 10px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -47,26 +49,36 @@
   </div>
 </div>
 
-<!-- تسجيل الدخول -->
-<div id="loginView" class="container" style="max-width:400px">
+<!-- ===== تسجيل الدخول ===== -->
+<div id="loginView" class="container" style="max-width:420px">
   <div class="card">
-    <h2>تسجيل الدخول</h2>
-    <label>البريد</label>
-    <input id="loginEmail" value="leader@test.com">
+    <h2>🔐 تسجيل الدخول</h2>
+
+    <label>البريد الإلكتروني</label>
+    <input id="loginEmail" value="leader@test.com" autocomplete="username">
+
     <label style="display:block;margin-top:10px">كلمة المرور</label>
-    <input id="loginPassword" type="password" value="123456">
+    <input id="loginPassword" type="password" value="123456" autocomplete="current-password">
+
     <button style="margin-top:14px" onclick="login()">دخول</button>
-    <div class="muted" style="margin-top:14px;line-height:1.8">
-      حسابات تجريبية (كلمة المرور 123456):<br>
-      requester@test.com — طالب<br>
-      leader@test.com — قائد<br>
-      finance@test.com — مالية<br>
-      admin@test.com — مدير
+
+    <div id="loginError" class="error-box hidden"></div>
+
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #eee">
+      <div class="muted" style="margin-bottom:8px">دخول سريع:</div>
+      <button class="quick-btn" onclick="quickLogin('requester@test.com')">👤 طالب</button>
+      <button class="quick-btn" onclick="quickLogin('leader@test.com')">👑 قائد</button>
+      <button class="quick-btn" onclick="quickLogin('finance@test.com')">💰 مالية</button>
+      <button class="quick-btn" onclick="quickLogin('admin@test.com')">⚙️ مدير</button>
+    </div>
+
+    <div style="margin-top:12px">
+      <button class="ghost" style="font-size:12px" onclick="resetData()">🔄 إعادة ضبط البيانات</button>
     </div>
   </div>
 </div>
 
-<!-- التطبيق -->
+<!-- ===== التطبيق ===== -->
 <div id="appView" class="container hidden">
   <div class="tabs">
     <button data-tab="dashboard" onclick="switchTab('dashboard')">🏠 لوحة التحكم</button>
@@ -144,7 +156,17 @@ function toast(msg, type='ok') {
   el.className = 'toast ' + type;
   el.textContent = msg;
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 3000);
+  setTimeout(() => el.remove(), 3500);
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+function hideLoginError() {
+  document.getElementById('loginError').classList.add('hidden');
 }
 
 async function api(path, opts = {}) {
@@ -152,19 +174,46 @@ async function api(path, opts = {}) {
   if (state.token) headers['Authorization'] = 'Bearer ' + state.token;
   const res = await fetch(API + path, { ...opts, headers });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'خطأ');
+  if (!res.ok) throw new Error(data.error || 'خطأ في الطلب');
   return data;
 }
 
 async function login() {
+  hideLoginError();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+
+  console.log('🔐 محاولة دخول:', { email, passwordLength: password.length });
+
   try {
-    const email = document.getElementById('loginEmail').value;
-    const password = document.getElementById('loginPassword').value;
-    const data = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    const data = await api('/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    });
+    console.log('✅ نجح الدخول:', data.user);
     state.token = data.token;
     localStorage.setItem('token', data.token);
     initApp();
-  } catch (e) { toast(e.message, 'err'); }
+  } catch (e) {
+    console.error('❌ فشل:', e.message);
+    showLoginError(e.message);
+  }
+}
+
+function quickLogin(email) {
+  document.getElementById('loginEmail').value = email;
+  document.getElementById('loginPassword').value = '123456';
+  login();
+}
+
+async function resetData() {
+  try {
+    const res = await fetch(API + '/debug/reset', { method: 'POST' });
+    const data = await res.json();
+    toast(data.message || 'تمت الإعادة');
+  } catch {
+    toast('فشل الاتصال بالسيرفر', 'err');
+  }
 }
 
 function logout() {
@@ -175,14 +224,19 @@ function logout() {
 async function initApp() {
   if (!state.token) return;
   try {
-    state.user = await api('/auth/me');
+    state.user = await api('/me');
     document.getElementById('loginView').classList.add('hidden');
     document.getElementById('appView').classList.remove('hidden');
     document.getElementById('userBox').classList.remove('hidden');
-    document.getElementById('userName').textContent = `${state.user.name} (${roleLabel(state.user.role)})`;
+    document.getElementById('userName').textContent =
+      `${state.user.name} (${roleLabel(state.user.role)})`;
     switchTab('dashboard');
     await loadDelegationsDropdown();
-  } catch { logout(); }
+  } catch (e) {
+    console.error('فشل initApp:', e);
+    toast('انتهت الجلسة، سجل الدخول من جديد', 'err');
+    logout();
+  }
 }
 
 function roleLabel(r) {
@@ -192,7 +246,8 @@ function roleLabel(r) {
 function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(x => x.classList.add('hidden'));
   document.getElementById('tab-' + name).classList.remove('hidden');
-  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tabs button').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === name));
   if (name === 'dashboard') loadDashboard();
   if (name === 'certifications') loadCertifications();
   if (name === 'delegations') loadDelegations();
@@ -216,12 +271,14 @@ async function loadDashboard() {
   const pending = certs.filter(c => c.status === 'PENDING').length;
   const approved = certs.filter(c => c.status === 'APPROVED').length;
   const rejected = certs.filter(c => c.status === 'REJECTED').length;
+
   document.getElementById('statsBox').innerHTML = `
     <div class="card" style="margin:0;text-align:center"><h2>${pending}</h2><div class="muted">معلّق</div></div>
     <div class="card" style="margin:0;text-align:center"><h2>${approved}</h2><div class="muted">موافق</div></div>
     <div class="card" style="margin:0;text-align:center"><h2>${rejected}</h2><div class="muted">مرفوض</div></div>
     <div class="card" style="margin:0;text-align:center"><h2>${delegs.length}</h2><div class="muted">عهد</div></div>
   `;
+
   document.getElementById('dashDelegations').innerHTML = delegs.map(d => `
     <div style="padding:8px;border-bottom:1px solid #eee">
       <b>${d.name}</b> — ${d.holder_name}
@@ -233,11 +290,16 @@ async function createCertification() {
   try {
     const type = document.getElementById('certType').value;
     const body = { type, description: document.getElementById('certDesc').value };
+
     if (type !== 'GENERAL') {
       body.delegation_id = +document.getElementById('certDeleg').value;
       body.amount = +document.getElementById('certAmount').value;
     }
-    const res = await api('/certifications', { method: 'POST', body: JSON.stringify(body) });
+
+    const res = await api('/certifications', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
     toast('تم إنشاء الطلب: ' + res.request_number);
     document.getElementById('certDesc').value = '';
     document.getElementById('certAmount').value = '';
@@ -250,9 +312,17 @@ async function loadCertifications() {
   const status = document.getElementById('filterStatus').value;
   const list = await api('/certifications' + (status ? `?status=${status}` : ''));
   const box = document.getElementById('certList');
-  if (!list.length) { box.innerHTML = '<div class="muted">لا توجد طلبات</div>'; return; }
+
+  if (!list.length) {
+    box.innerHTML = '<div class="muted">لا توجد طلبات</div>';
+    return;
+  }
+
   box.innerHTML = `<table>
-    <thead><tr><th>الرقم</th><th>النوع</th><th>المبلغ</th><th>الطالب</th><th>العهدة</th><th>الحالة</th><th>إجراء</th></tr></thead>
+    <thead><tr>
+      <th>الرقم</th><th>النوع</th><th>المبلغ</th>
+      <th>الطالب</th><th>العهدة</th><th>الحالة</th><th>إجراء</th>
+    </tr></thead>
     <tbody>${list.map(c => `
       <tr>
         <td class="mono">${c.request_number}</td>
@@ -266,24 +336,28 @@ async function loadCertifications() {
   </table>`;
 }
 
-function certTypeLabel(t) { return { EXPENSE: 'مصروف', ADDITION: 'إضافة', GENERAL: 'عام' }[t] || t; }
-function statusLabel(s) { return { PENDING: 'معلّق', APPROVED: 'موافق', REJECTED: 'مرفوض' }[s] || s; }
+function certTypeLabel(t) {
+  return { EXPENSE: 'مصروف', ADDITION: 'إضافة', GENERAL: 'عام' }[t] || t;
+}
+function statusLabel(s) {
+  return { PENDING: 'معلّق', APPROVED: 'موافق', REJECTED: 'مرفوض' }[s] || s;
+}
 
 async function viewCert(id) {
   const data = await api('/certifications/' + id);
   const c = data.certification;
-  const canAct = c.status === 'PENDING' && (state.user.role === 'LEADER' || state.user.role === 'ADMIN');
+  const canAct = c.status === 'PENDING' &&
+    (state.user.role === 'LEADER' || state.user.role === 'ADMIN');
 
-  const logs = data.logs.map(l =>
+  const logsHtml = data.logs.map(l =>
     `<div class="muted" style="padding:4px 0">${l.created_at} — ${l.actor_name}: <b>${l.action}</b>${l.comment ? ' — ' + l.comment : ''}</div>`
   ).join('');
 
-  const tx = data.transactions.map(t =>
-    `<div class="muted" style="padding:4px 0">${t.type}: ${t.amount} (${t.balance_before} → ${t.balance_after})</div>`
+  const txHtml = data.transactions.map(t =>
+    `<div class="muted" style="padding:4px 0">${t.type === 'DEDUCT' ? '🔴 منصرف' : '🟢 إضافة'}: ${t.amount} (${t.balance_before} → ${t.balance_after})</div>`
   ).join('');
 
-  const root = document.getElementById('modalRoot');
-  root.innerHTML = `
+  document.getElementById('modalRoot').innerHTML = `
     <div class="modal-bg" onclick="if(event.target===this)closeModal()">
       <div class="modal">
         <h2>${c.request_number}</h2>
@@ -297,8 +371,8 @@ async function viewCert(id) {
           ${c.leader_comment ? `<div>تعليق القائد: ${c.leader_comment}</div>` : ''}
         </div>
         <h4>السجل</h4>
-        ${logs || '<div class="muted">لا يوجد</div>'}
-        ${tx ? `<h4>حركات العهدة</h4>${tx}` : ''}
+        ${logsHtml || '<div class="muted">لا يوجد</div>'}
+        ${txHtml ? `<h4>حركات العهدة</h4>${txHtml}` : ''}
         ${canAct ? `
           <div style="margin-top:16px;padding-top:16px;border-top:1px solid #eee">
             <h4>إجراء القائد</h4>
@@ -318,8 +392,11 @@ function closeModal() { document.getElementById('modalRoot').innerHTML = ''; }
 async function approveCert(id) {
   try {
     const comment = document.getElementById('leaderComment').value;
-    await api(`/certifications/${id}/approve`, { method: 'POST', body: JSON.stringify({ comment }) });
-    toast('تمت الموافقة');
+    await api(`/certifications/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ comment })
+    });
+    toast('✅ تمت الموافقة');
     closeModal();
     loadCertifications();
     loadDelegationsDropdown();
@@ -330,7 +407,10 @@ async function rejectCert(id) {
   try {
     const comment = document.getElementById('leaderComment').value;
     if (!comment.trim()) return toast('سبب الرفض إلزامي', 'err');
-    await api(`/certifications/${id}/reject`, { method: 'POST', body: JSON.stringify({ comment }) });
+    await api(`/certifications/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ comment })
+    });
     toast('تم الرفض');
     closeModal();
     loadCertifications();
@@ -340,9 +420,17 @@ async function rejectCert(id) {
 async function loadDelegations() {
   const list = await api('/delegations');
   const box = document.getElementById('delegList');
-  if (!list.length) { box.innerHTML = '<div class="muted">لا توجد عهد</div>'; return; }
+
+  if (!list.length) {
+    box.innerHTML = '<div class="muted">لا توجد عهد</div>';
+    return;
+  }
+
   box.innerHTML = `<table>
-    <thead><tr><th>#</th><th>الاسم</th><th>الحامل</th><th>الأولي</th><th>الحالي</th><th>إجراء</th></tr></thead>
+    <thead><tr>
+      <th>#</th><th>الاسم</th><th>الحامل</th>
+      <th>الأولي</th><th>الحالي</th><th>إجراء</th>
+    </tr></thead>
     <tbody>${list.map(d => `
       <tr>
         <td class="mono">${d.id}</td>
@@ -380,13 +468,24 @@ async function viewDelegation(id) {
         </div>
         <h4>الحركات</h4>
         <table>
-          <thead><tr><th>#</th><th>النوع</th><th>المبلغ</th><th>الرصيد</th><th>التصديق</th><th>بواسطة</th><th>التاريخ</th></tr></thead>
+          <thead><tr>
+            <th>#</th><th>النوع</th><th>المبلغ</th><th>الرصيد</th>
+            <th>التصديق</th><th>بواسطة</th><th>التاريخ</th>
+          </tr></thead>
           <tbody>${tx || '<tr><td colspan="7" class="muted">لا توجد حركات</td></tr>'}</tbody>
         </table>
         <button class="ghost" style="margin-top:14px" onclick="closeModal()">إغلاق</button>
       </div>
     </div>`;
 }
+
+// Enter يشتغل في اللوجن
+document.getElementById('loginPassword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') login();
+});
+document.getElementById('loginEmail').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('loginPassword').focus();
+});
 
 // تشغيل تلقائي
 if (state.token) initApp();
